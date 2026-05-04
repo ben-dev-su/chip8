@@ -1,0 +1,12 @@
+CC = clang
+CFLAGS = --std=c23 -Wall -Wextra -Werror
+CHIP8 = chip8
+
+build/main.o: src/main.c
+	$(CC) $(CFLAGS) -c src/main.c -o build/main.o
+
+chip8: build/main.o
+	$(CC) build/main.o -o bin/$(CHIP8)
+
+clean:
+	rm -f build/main.o bin/$(CHIP8)
