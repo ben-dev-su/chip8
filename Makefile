@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = --std=c23 -Wall -Wextra -Werror
+CFLAGS = --std=c23 -g -Wall -Wextra -Werror -Wno-unused-variable -Wno-unused-parameter
 CHIP8 = chip8
 
 SRCS = src/main.c src/stack.c src/chip8.c
