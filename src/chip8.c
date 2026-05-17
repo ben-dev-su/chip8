@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void fetch();
+void fetch(chip8_t *chip8);
 void decode();
 void execute();
 long get_file_size(FILE *fp);
@@ -61,7 +61,6 @@ void chip8_loadGame(chip8_t *chip8, char *fileName) {
     perror("fopen failed");
     return;
   }
-
   long file_size = get_file_size(fp);
   fread(chip8->memory + PROGRAM_START_INDEX, sizeof(unsigned char), file_size,
         fp);
@@ -69,11 +68,30 @@ void chip8_loadGame(chip8_t *chip8, char *fileName) {
   fclose(fp);
 }
 
-/* void chip8_emulateCycle(chip8_t *chip8) { */
-/*   fetch(); */
-/*   decode(); */
-/*   execute(); */
-/* } */
+void chip8_emulateCycle(chip8_t *chip8) {
+  fetch(chip8);
+  /* decode(); */
+  /* execute(); */
+}
+
+/*
+ * @Brief Does fetch opcodes from memory, and increments the program counter.
+ *
+ */
+void fetch(chip8_t *chip8) {
+  if (chip8 == NULL) {
+    printf("chip8 can't be NULL (forgot to initialise?): %p", chip8);
+    free(chip8);
+    exit(1);
+  }
+
+  unsigned short opcode;
+  unsigned char first_byte = chip8->memory[chip8->pc];
+  unsigned char second_byte = chip8->memory[chip8->pc + 1];
+  opcode = first_byte << 8 | second_byte;
+  chip8->opcode = opcode;
+  chip8->pc = chip8->pc + 2;
+}
 
 /*
  * @Brief Returns the file size for a given file.
