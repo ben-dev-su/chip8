@@ -4,9 +4,14 @@
 #include <string.h>
 
 void fetch(chip8_t *chip8);
-void decode();
+void decode(chip8_t *chip8);
 void execute();
 long get_file_size(FILE *fp);
+unsigned short getN(unsigned short opcode);
+unsigned short getNN(unsigned short opcode);
+unsigned short getNNN(unsigned short opcode);
+unsigned short getIndexX(unsigned short opcode);
+unsigned short getIndexY(unsigned short opcode);
 
 /*
  * FONT data that will be stored in memory at position 0x50 to 0x9F
@@ -70,7 +75,7 @@ void chip8_loadGame(chip8_t *chip8, char *fileName) {
 
 void chip8_emulateCycle(chip8_t *chip8) {
   fetch(chip8);
-  /* decode(); */
+  decode(chip8);
   /* execute(); */
 }
 
@@ -90,7 +95,75 @@ void fetch(chip8_t *chip8) {
   unsigned char second_byte = chip8->memory[chip8->pc + 1];
   opcode = first_byte << 8 | second_byte;
   chip8->opcode = opcode;
-  chip8->pc = chip8->pc + 2;
+}
+
+/* TODO: first opcodes to implement
+ * 00E0 (clear screen)
+ * 1NNN (jump)
+ * 6XNN (set register VX)
+ * 7XNN (add value to register VX)
+ * ANNN (set index register I)
+ * DXYN (display/draw)
+ */
+void decode(chip8_t *chip8) {
+  unsigned short op = chip8->opcode & 0xF000;
+  // The 4 bit value
+  unsigned short N;
+  // The 8 bit value
+  unsigned short NN;
+  // The 12 bit value
+  unsigned short NNN;
+  // Index of a v register
+  unsigned short index_x;
+  // Index of a v register
+  unsigned short index_y;
+  printf("executing opcode: 0x%x\n", chip8->opcode);
+
+  switch (chip8->opcode & 0xF000) {
+  case 0x0000:
+    op = chip8->opcode & 0x00FF;
+    switch (op) {
+    case 0x00E0:
+      printf("clear screen\n");
+      chip8->pc += 2;
+      break;
+    case 0x00EE:
+      printf("returns from subroutine\n");
+      chip8->pc += 2;
+      break;
+    }
+    break;
+  case 0x1000:
+    chip8->pc = chip8->opcode & 0x0FFF;
+    printf("jump to address: 0x%04x\n", chip8->opcode & 0x0FFF);
+    printf("pc: 0x%04x\n", chip8->pc);
+    break;
+  case 0x6000:
+    index_x = getIndexX(chip8->opcode);
+    NN = getNN(chip8->opcode);
+    printf("set register V0x%x to NN: 0x%x\n", index_x, NN);
+    chip8->v[index_x] = NN;
+    chip8->pc += 2;
+    break;
+  case 0x7000:
+    index_x = getIndexX(chip8->opcode);
+    NN = getNN(chip8->opcode);
+    printf("add 0x%x to register V%x \n", NN, index_x);
+    chip8->v[index_x] += NN;
+    chip8->pc += 2;
+    break;
+  case 0xA000:
+    chip8->I = chip8->opcode & 0x0FFF;
+    printf("set index register I to NNN: 0x%x\n", chip8->opcode & 0x0FFF);
+    chip8->pc += 2;
+    break;
+  case 0xD000:
+    printf("display/draw");
+    chip8->pc += 2;
+    break;
+  default:
+    printf("Unknown opcode: 0x%x\n", chip8->opcode);
+  }
 }
 
 /*
@@ -116,3 +189,9 @@ long get_file_size(FILE *fp) {
 
   return size;
 }
+
+unsigned short getN(unsigned short opcode);
+unsigned short getNN(unsigned short opcode) { return opcode & 0x00FF; }
+unsigned short getNNN(unsigned short opcode);
+unsigned short getIndexX(unsigned short opcode) { return opcode >> 8 & 0x000F; }
+unsigned short getIndexY(unsigned short opcode) { return opcode >> 4 & 0x000F; }

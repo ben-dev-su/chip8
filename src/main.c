@@ -6,9 +6,15 @@ int main() {
   chip8_initialise(&chip);
   chip8_loadGame(&chip, "res/roms/IBM Logo.ch8");
 
-  printf("chip8 pc: %d\n", chip.pc);
-  printf("chip8 pc: %02x\n", chip.memory[512]);
-  printf("chip8 pc: %02x\n", chip.memory[513]);
-  printf("chip8 pc: %02x\n", chip.memory[554]);
+  chip8_emulateCycle(&chip);
+  chip8_emulateCycle(&chip);
+  chip8_emulateCycle(&chip);
+  chip8_emulateCycle(&chip);
+  chip8_emulateCycle(&chip);
+  chip8_emulateCycle(&chip);
+  chip8_emulateCycle(&chip);
+  chip8_emulateCycle(&chip);
+
+  printf("\n");
   return 0;
 }
