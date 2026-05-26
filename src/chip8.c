@@ -108,15 +108,23 @@ void fetch(chip8_t *chip8) {
 void decode(chip8_t *chip8) {
   unsigned short op = chip8->opcode & 0xF000;
   // The 4 bit value
+  // FIXME: unused
   unsigned short N;
+  (void)N;
   // The 8 bit value
+  // FIXME: unused
   unsigned short NN;
+  (void)NN;
   // The 12 bit value
+  // FIXME: unused
   unsigned short NNN;
+  (void)NNN;
   // Index of a v register
   unsigned short index_x;
   // Index of a v register
+  // FIXME: unused
   unsigned short index_y;
+  (void)index_y;
 
 #ifdef DEBUG
   printf("executing opcode: 0x%x\n", chip8->opcode);
@@ -131,9 +139,6 @@ void decode(chip8_t *chip8) {
       printf("clear screen\n");
 #endif
       memset(chip8->gfx, 0, sizeof(chip8->gfx));
-      printf("\033[2J");
-      printf("\033[H");
-      fflush(stdout);
       chip8->pc += 2;
       break;
     case 0x00EE:

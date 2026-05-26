@@ -1,3 +1,5 @@
+#pragma once
+
 #define STACK_MAX_LEVEL 16
 
 typedef struct Stack {
