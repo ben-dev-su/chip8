@@ -1,7 +1,10 @@
 #include "chip8.h"
+#include "logging.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define DEBUG
 
 void fetch(chip8_t *chip8);
 void decode(chip8_t *chip8);
@@ -97,13 +100,10 @@ void fetch(chip8_t *chip8) {
   chip8->opcode = opcode;
 }
 
-/* TODO: first opcodes to implement
- * 00E0 (clear screen)
- * 1NNN (jump)
- * 6XNN (set register VX)
- * 7XNN (add value to register VX)
- * ANNN (set index register I)
- * DXYN (display/draw)
+/* TODO: opcodes to implement
+ * 0xCXNN generate a random  number
+ * 0xEX9E skip if key
+ * 0xEXA1 skip if key
  */
 void decode(chip8_t *chip8) {
   unsigned short op = chip8->opcode & 0xF000;
@@ -126,68 +126,39 @@ void decode(chip8_t *chip8) {
   unsigned short index_y;
   (void)index_y;
 
-#ifdef DEBUG
-  printf("executing opcode: 0x%x\n", chip8->opcode);
-#endif
-
   switch (chip8->opcode & 0xF000) {
   case 0x0000:
     op = chip8->opcode & 0x00FF;
     switch (op) {
     case 0x00E0:
-#ifdef DEBUG
-      printf("clear screen\n");
-#endif
       memset(chip8->gfx, 0, sizeof(chip8->gfx));
       chip8->pc += 2;
       break;
     case 0x00EE:
-#ifdef DEBUG
-      printf("returns from subroutine\n");
-#endif
       chip8->pc += 2;
       break;
     }
     break;
   case 0x1000:
     chip8->pc = chip8->opcode & 0x0FFF;
-#ifdef DEBUG
-    printf("jump to address: 0x%04x\n", chip8->opcode & 0x0FFF);
-    printf("pc: 0x%04x\n", chip8->pc);
-#endif
     break;
   case 0x6000:
     index_x = getIndexX(chip8->opcode);
     NN = getNN(chip8->opcode);
-#ifdef DEBUG
-    printf("set register V0x%x to NN: 0x%x\n", index_x, NN);
-#endif
     chip8->v[index_x] = NN;
     chip8->pc += 2;
     break;
   case 0x7000:
     index_x = getIndexX(chip8->opcode);
     NN = getNN(chip8->opcode);
-
-#ifdef DEBUG
-    printf("add 0x%x to register V%x \n", NN, index_x);
-#endif
     chip8->v[index_x] += NN;
     chip8->pc += 2;
     break;
   case 0xA000:
     chip8->I = chip8->opcode & 0x0FFF;
-
-#ifdef DEBUG
-    printf("set index register I to NNN: 0x%x\n", chip8->opcode & 0x0FFF);
-#endif
     chip8->pc += 2;
     break;
-  case 0xD000:
-
-#ifdef DEBUG
-    printf("display/draw\n");
-#endif
+  case 0xD000: {
     unsigned char vx = getIndexX(chip8->opcode);
     unsigned char vy = getIndexY(chip8->opcode);
     unsigned char xpos = chip8->v[vx];
@@ -213,11 +184,13 @@ void decode(chip8_t *chip8) {
     }
     chip8->pc += 2;
     break;
-  default:
-#ifdef DEBUG
-    printf("Unknown opcode: 0x%x\n", chip8->opcode);
-#endif
   }
+  default:
+    printf("Unknown opcode: 0x%x\n", chip8->opcode);
+  }
+#ifdef DEBUG
+  log_chip8_state(chip8);
+#endif
 }
 
 void testSprite() {}

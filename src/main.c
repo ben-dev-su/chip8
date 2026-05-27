@@ -10,7 +10,7 @@ int main() {
   chip8_t chip;
   sdl_t sdl;
   chip8_initialise(&chip);
-  chip8_loadGame(&chip, "res/roms/IBM Logo.ch8");
+  chip8_loadGame(&chip, "res/roms/chip8-test-suite/1-chip8-logo.ch8");
   if (!setup_backend(&sdl)) {
     clean_up_backend(&sdl);
     exit(1);
