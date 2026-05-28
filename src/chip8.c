@@ -103,6 +103,7 @@ void fetch(chip8_t *chip8) {
 
 /* implemented opcodes
 00E0: clear the screen
+00EE: return from subroutine to address pulled from stack
 1nnn: jump to address NNN
 2nnn: push return address onto stack and call subroutine at address NNN
 3xnn: skip next opcode if vX == NN
@@ -110,17 +111,6 @@ void fetch(chip8_t *chip8) {
 5xy0: skip next opcode if vX == vY
 6xnn: set vX to NN
 7xnn: add NN to vX
-9xy0: skip next opcode if vX != vY
-Annn: set I to NNN
-
-Dxyn: draw 8xN pixel sprite at position vX, vY with data starting at the address
-in I, I is not changed [Quirk 7] [Quirk 8] [Quirk 9] [Quirk 10]
- */
-
-/* TODO: opcodes to implement
-
-00EE: return from subroutine to address pulled from stack
-0nnn: jump to native assembler subroutine at 0xNNN
 8xy0: set vX to the value of vY
 8xy1: set vX to the result of bitwise vX OR vY [Quirk 5]
 8xy2: set vX to the result of bitwise vX AND vY [Quirk 5]
@@ -140,22 +130,28 @@ underflow happened, to 1 if not, even if X=F!
 8xyE: set vX to vY and shift vX one bit to the left, set vF to the bit shifted
 out, even if X=F! [Quirk 6]
 
+9xy0: skip next opcode if vX != vY
+Annn: set I to NNN
+
+Dxyn: draw 8xN pixel sprite at position vX, vY with data starting at the address
+in I, I is not changed [Quirk 7] [Quirk 8] [Quirk 9] [Quirk 10]
+ */
+
+/* TODO: opcodes to implement
+
+0nnn: jump to native assembler subroutine at 0xNNN
 Bnnn: jump to address NNN + v0 Cxnn: set vx to a random value masked (bitwise
 AND) with NN
 
 Ex9E: skip next opcode if key in the lower 4 bits of vX is pressed
-
 ExA1: skip next opcode if key in the lower 4 bits of vX is not pressed
-
 Fx07: set vX to the value of the delay timer
-
 Fx0A: wait for a key pressed and released and set vX to it
 Fx15: set delay timer to vX
 Fx18: set sound timer to vX, sound is played until timer reaches zero
 Fx1E: add vX to I
 Fx29: set I to the 5 line high hex sprite for the lowest nibble in vX
 Fx33: write the value of vX as BCD value at the addresses I, I+1 and I+2
-
 Fx55: write the content of v0 to vX at the memory pointed to by I, I is
 incremented by X+1 [Quirk 12]
 
@@ -191,13 +187,14 @@ void decode(chip8_t *chip8) {
       memset(chip8->gfx, 0, sizeof(chip8->gfx));
       chip8->pc += 2;
       break;
-    case 0x00EE:
+    case 0x00EE: {
       unsigned short address;
       pop(&chip8->stack, &address);
       chip8->pc = address;
       chip8->sp = chip8->stack.top;
       chip8->pc += 2;
       break;
+    }
     }
     break;
   case 0x1000:
@@ -253,7 +250,72 @@ void decode(chip8_t *chip8) {
     chip8->I = chip8->opcode & 0x0FFF;
     chip8->pc += 2;
     break;
+  case 0x8000: {
+    op = getN(chip8->opcode);
+    unsigned short index_x = getIndexX(chip8->opcode);
+    unsigned short index_y = getIndexY(chip8->opcode);
+    unsigned short vx = chip8->v[index_x];
+    unsigned short vy = chip8->v[index_y];
+    switch (op) {
+    case 0x0:
+      chip8->v[index_x] = vy;
+      break;
+    case 0x1:
+      chip8->v[index_x] = vx | vy;
+      break;
+    case 0x2:
+      chip8->v[index_x] = vx & vy;
+      break;
+    case 0x3:
+      chip8->v[index_x] = vx ^ vy;
+      break;
+    case 0x4:
+      if (vx + vy > 255) {
+        chip8->v[0xf] = 1;
+      } else {
 
+        chip8->v[0xf] = 0;
+      }
+      chip8->v[index_x] += vy;
+      break;
+    case 0x5:
+      if (vx >= vy) {
+        chip8->v[0xF] = 1;
+      } else {
+        chip8->v[0xF] = 0;
+      }
+      chip8->v[index_x] -= vy;
+      break;
+    case 0x6:
+      chip8->v[index_x] = vy;
+      if ((chip8->v[index_x] & 0b00000001) == 1) {
+        chip8->v[0xF] = 1;
+      } else {
+        chip8->v[0xF] = 0;
+      }
+      chip8->v[index_x] = chip8->v[index_x] >> 1;
+      break;
+    case 0x7:
+      if (vy >= vx) {
+        chip8->v[0xF] = 1;
+      } else {
+        chip8->v[0xF] = 0;
+      }
+      chip8->v[index_x] = vy - vx;
+      break;
+    case 0xE:
+      chip8->v[index_x] = vy;
+      if ((chip8->v[index_x] & 0b10000000) == 0b10000000) {
+        chip8->v[0xF] = 1;
+      } else {
+        chip8->v[0xF] = 0;
+      }
+      chip8->v[index_x] = chip8->v[index_x] << 1;
+      break;
+    }
+    chip8->pc += 2;
+    break;
+  }
   case 0x9000: {
     unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
     unsigned short vy = chip8->v[getIndexY(chip8->opcode)];
