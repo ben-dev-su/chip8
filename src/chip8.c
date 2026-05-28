@@ -1,5 +1,6 @@
 #include "chip8.h"
 #include "logging.h"
+#include "stack.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,6 +104,7 @@ void fetch(chip8_t *chip8) {
 /* implemented opcodes
 00E0: clear the screen
 1nnn: jump to address NNN
+2nnn: push return address onto stack and call subroutine at address NNN
 3xnn: skip next opcode if vX == NN
 4xnn: skip next opcode if vX != NN
 5xy0: skip next opcode if vX == vY
@@ -119,7 +121,6 @@ in I, I is not changed [Quirk 7] [Quirk 8] [Quirk 9] [Quirk 10]
 
 00EE: return from subroutine to address pulled from stack
 0nnn: jump to native assembler subroutine at 0xNNN
-2nnn: push return address onto stack and call subroutine at address NNN
 8xy0: set vX to the value of vY
 8xy1: set vX to the result of bitwise vX OR vY [Quirk 5]
 8xy2: set vX to the result of bitwise vX AND vY [Quirk 5]
@@ -191,6 +192,10 @@ void decode(chip8_t *chip8) {
       chip8->pc += 2;
       break;
     case 0x00EE:
+      unsigned short address;
+      pop(&chip8->stack, &address);
+      chip8->pc = address;
+      chip8->sp = chip8->stack.top;
       chip8->pc += 2;
       break;
     }
@@ -198,6 +203,13 @@ void decode(chip8_t *chip8) {
   case 0x1000:
     chip8->pc = chip8->opcode & 0x0FFF;
     break;
+  case 0x2000: {
+    unsigned short NNN = getNNN(chip8->opcode);
+    push(&chip8->stack, chip8->pc);
+    chip8->sp = chip8->stack.top;
+    chip8->pc = NNN;
+    break;
+  }
   case 0x3000: {
     unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
     unsigned short NN = getNN(chip8->opcode);
@@ -313,6 +325,6 @@ long get_file_size(FILE *fp) {
 
 unsigned short getN(unsigned short opcode) { return opcode & 0x000F; };
 unsigned short getNN(unsigned short opcode) { return opcode & 0x00FF; }
-unsigned short getNNN(unsigned short opcode);
+unsigned short getNNN(unsigned short opcode) { return opcode & 0xFFF; }
 unsigned short getIndexX(unsigned short opcode) { return opcode >> 8 & 0x000F; }
 unsigned short getIndexY(unsigned short opcode) { return opcode >> 4 & 0x000F; }
