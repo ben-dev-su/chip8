@@ -352,6 +352,31 @@ void decode(chip8_t *chip8) {
     chip8->pc += 2;
     break;
   }
+  case 0xF000:
+    op = getNN(chip8->opcode);
+    switch (op) {
+    case 0x55: {
+      unsigned short x = getIndexX(chip8->opcode);
+      unsigned char v;
+      for (size_t i = 0; i <= x; i++) {
+        v = chip8->v[i];
+        chip8->memory[chip8->I + i] = v;
+        chip8->I += i;
+      }
+      chip8->pc += 2;
+      break;
+    }
+    case 0x65: {
+      unsigned short x = getIndexX(chip8->opcode);
+      for (size_t i = 0; i <= x; i++) {
+        chip8->v[i] = chip8->memory[chip8->I + i];
+        chip8->I += i;
+      }
+      chip8->pc += 2;
+      break;
+    }
+    }
+    break;
   default:
     printf("Unknown opcode: 0x%x\n", chip8->opcode);
   }
