@@ -361,8 +361,8 @@ void decode(chip8_t *chip8) {
       for (size_t i = 0; i <= x; i++) {
         v = chip8->v[i];
         chip8->memory[chip8->I + i] = v;
-        chip8->I += i;
       }
+      chip8->I += x + 1;
       chip8->pc += 2;
       break;
     }
@@ -370,8 +370,8 @@ void decode(chip8_t *chip8) {
       unsigned short x = getIndexX(chip8->opcode);
       for (size_t i = 0; i <= x; i++) {
         chip8->v[i] = chip8->memory[chip8->I + i];
-        chip8->I += i;
       }
+      chip8->I += x + 1;
       chip8->pc += 2;
       break;
     }
