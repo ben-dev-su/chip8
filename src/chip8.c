@@ -102,39 +102,7 @@ void fetch(chip8_t *chip8) {
 }
 
 /* implemented opcodes
-00E0: clear the screen
-00EE: return from subroutine to address pulled from stack
-1nnn: jump to address NNN
-2nnn: push return address onto stack and call subroutine at address NNN
-3xnn: skip next opcode if vX == NN
-4xnn: skip next opcode if vX != NN
-5xy0: skip next opcode if vX == vY
-6xnn: set vX to NN
-7xnn: add NN to vX
-8xy0: set vX to the value of vY
-8xy1: set vX to the result of bitwise vX OR vY [Quirk 5]
-8xy2: set vX to the result of bitwise vX AND vY [Quirk 5]
-8xy3: set vX to the result of bitwise vX XOR vY [Quirk 5]
-8xy4: add vY to vX, vF is set to 1 if an overflow happened, to 0 if not, even if
-X=F!
 
-8xy5: subtract vY from vX, vF is set to 0 if an underflow happened, to 1 if not,
-even if X=F!
-
-8xy6: set vX to vY and shift vX one bit to the right, set vF to the bit shifted
-out, even if X=F! [Quirk 6]
-
-8xy7: set vX to the result of subtracting vX from vY, vF is set to 0 if an
-underflow happened, to 1 if not, even if X=F!
-
-8xyE: set vX to vY and shift vX one bit to the left, set vF to the bit shifted
-out, even if X=F! [Quirk 6]
-
-9xy0: skip next opcode if vX != vY
-Annn: set I to NNN
-
-Dxyn: draw 8xN pixel sprite at position vX, vY with data starting at the address
-in I, I is not changed [Quirk 7] [Quirk 8] [Quirk 9] [Quirk 10]
  */
 
 /* TODO: opcodes to implement
@@ -149,14 +117,7 @@ Fx07: set vX to the value of the delay timer
 Fx0A: wait for a key pressed and released and set vX to it
 Fx15: set delay timer to vX
 Fx18: set sound timer to vX, sound is played until timer reaches zero
-Fx1E: add vX to I
 Fx29: set I to the 5 line high hex sprite for the lowest nibble in vX
-Fx33: write the value of vX as BCD value at the addresses I, I+1 and I+2
-Fx55: write the content of v0 to vX at the memory pointed to by I, I is
-incremented by X+1 [Quirk 12]
-
-Fx65: read the bytes from memory pointed to by I into the registers v0 to vX, I
-is incremented by X+1 [Quirk 12]
  */
 void decode(chip8_t *chip8) {
   unsigned short op = chip8->opcode & 0xF000;
@@ -183,10 +144,14 @@ void decode(chip8_t *chip8) {
   case 0x0000:
     op = chip8->opcode & 0x00FF;
     switch (op) {
+
+      // 00E0: clear the screen
     case 0x00E0:
       memset(chip8->gfx, 0, sizeof(chip8->gfx));
       chip8->pc += 2;
       break;
+
+      // 00EE: return from subroutine to address pulled from stack
     case 0x00EE: {
       unsigned short address;
       pop(&chip8->stack, &address);
@@ -197,9 +162,13 @@ void decode(chip8_t *chip8) {
     }
     }
     break;
+
+    // 1nnn: jump to address NNN
   case 0x1000:
     chip8->pc = chip8->opcode & 0x0FFF;
     break;
+
+    // 2nnn: push return address onto stack and call subroutine at address NNN
   case 0x2000: {
     unsigned short NNN = getNNN(chip8->opcode);
     push(&chip8->stack, chip8->pc);
@@ -207,6 +176,8 @@ void decode(chip8_t *chip8) {
     chip8->pc = NNN;
     break;
   }
+
+    // 3xnn: skip next opcode if vX == NN
   case 0x3000: {
     unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
     unsigned short NN = getNN(chip8->opcode);
@@ -216,6 +187,8 @@ void decode(chip8_t *chip8) {
     chip8->pc += 2;
     break;
   }
+
+    // 4xnn: skip next opcode if vX != NN
   case 0x4000: {
     unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
     unsigned short NN = getNN(chip8->opcode);
@@ -225,6 +198,8 @@ void decode(chip8_t *chip8) {
     chip8->pc += 2;
     break;
   }
+
+    // 5xy0: skip next opcode if vX == vY
   case 0x5000: {
     unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
     unsigned short vy = chip8->v[getIndexY(chip8->opcode)];
@@ -234,18 +209,24 @@ void decode(chip8_t *chip8) {
     chip8->pc += 2;
     break;
   }
+
+    // 6xnn: set vX to NN
   case 0x6000:
     index_x = getIndexX(chip8->opcode);
     NN = getNN(chip8->opcode);
     chip8->v[index_x] = NN;
     chip8->pc += 2;
     break;
+
+    // 7xnn: add NN to vX
   case 0x7000:
     index_x = getIndexX(chip8->opcode);
     NN = getNN(chip8->opcode);
     chip8->v[index_x] += NN;
     chip8->pc += 2;
     break;
+
+    // Annn: set I to NNN
   case 0xA000:
     chip8->I = chip8->opcode & 0x0FFF;
     chip8->pc += 2;
@@ -257,18 +238,29 @@ void decode(chip8_t *chip8) {
     unsigned short vx = chip8->v[index_x];
     unsigned short vy = chip8->v[index_y];
     switch (op) {
+
+      // 8xy0: set vX to the value of vY
     case 0x0:
       chip8->v[index_x] = vy;
       break;
+
+      // 8xy1: set vX to the result of bitwise vX OR vY [Quirk 5]
     case 0x1:
       chip8->v[index_x] = vx | vy;
       break;
+
+      // 8xy2: set vX to the result of bitwise vX AND vY [Quirk 5]
     case 0x2:
       chip8->v[index_x] = vx & vy;
       break;
+
+      // 8xy3: set vX to the result of bitwise vX XOR vY [Quirk 5]
     case 0x3:
       chip8->v[index_x] = vx ^ vy;
       break;
+
+      // 8xy4: add vY to vX, vF is set to 1 if an overflow happened, to 0 if
+      // not, even if X=F!
     case 0x4:
       if (vx + vy > 255) {
         chip8->v[0xf] = 1;
@@ -278,6 +270,9 @@ void decode(chip8_t *chip8) {
       }
       chip8->v[index_x] += vy;
       break;
+
+      // 8xy5: subtract vY from vX, vF is set to 0 if an underflow happened, to
+      // 1 if not, even if X=F!
     case 0x5:
       if (vx >= vy) {
         chip8->v[0xF] = 1;
@@ -286,6 +281,9 @@ void decode(chip8_t *chip8) {
       }
       chip8->v[index_x] -= vy;
       break;
+
+      // 8xy6: set vX to vY and shift vX one bit to the right, set vF to the bit
+      // shifted out, even if X=F! [Quirk 6]
     case 0x6:
       chip8->v[index_x] = vy;
       if ((chip8->v[index_x] & 0b00000001) == 1) {
@@ -295,6 +293,9 @@ void decode(chip8_t *chip8) {
       }
       chip8->v[index_x] = chip8->v[index_x] >> 1;
       break;
+
+      // 8xy7: set vX to the result of subtracting vX from vY, vF is set to 0 if
+      // an underflow happened, to 1 if not, even if X=F!
     case 0x7:
       if (vy >= vx) {
         chip8->v[0xF] = 1;
@@ -303,6 +304,9 @@ void decode(chip8_t *chip8) {
       }
       chip8->v[index_x] = vy - vx;
       break;
+
+      // 8xyE: set vX to vY and shift vX one bit to the left, set vF to the bit
+      // shifted out, even if X=F! [Quirk 6]
     case 0xE:
       chip8->v[index_x] = vy;
       if ((chip8->v[index_x] & 0b10000000) == 0b10000000) {
@@ -316,6 +320,8 @@ void decode(chip8_t *chip8) {
     chip8->pc += 2;
     break;
   }
+
+    // 9xy0: skip next opcode if vX != vY
   case 0x9000: {
     unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
     unsigned short vy = chip8->v[getIndexY(chip8->opcode)];
@@ -325,6 +331,9 @@ void decode(chip8_t *chip8) {
     chip8->pc += 2;
     break;
   }
+
+    // Dxyn: draw 8xN pixel sprite at position vX, vY with data starting at the
+    // address in I, I is not changed [Quirk 7] [Quirk 8] [Quirk 9] [Quirk 10]
   case 0xD000: {
     unsigned char vx = getIndexX(chip8->opcode);
     unsigned char vy = getIndexY(chip8->opcode);
@@ -367,6 +376,9 @@ void decode(chip8_t *chip8) {
       chip8->pc += 2;
       break;
     }
+
+      // Fx55: write the content of v0 to vX at the memory pointed to by I, I is
+      // incremented by X+1 [Quirk 12]
     case 0x55: {
       unsigned short x = getIndexX(chip8->opcode);
       unsigned char v;
@@ -378,6 +390,9 @@ void decode(chip8_t *chip8) {
       chip8->pc += 2;
       break;
     }
+
+      // Fx65: read the bytes from memory pointed to by I into the registers v0
+      // to vX, I is incremented by X+1 [Quirk 12]
     case 0x65: {
       unsigned short x = getIndexX(chip8->opcode);
       for (size_t i = 0; i <= x; i++) {
@@ -387,6 +402,8 @@ void decode(chip8_t *chip8) {
       chip8->pc += 2;
       break;
     }
+
+      // Fx1E: add vX to I
     case 0x1E: {
       chip8->I += chip8->v[getIndexX(chip8->opcode)];
       chip8->pc += 2;
