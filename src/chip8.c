@@ -355,6 +355,18 @@ void decode(chip8_t *chip8) {
   case 0xF000:
     op = getNN(chip8->opcode);
     switch (op) {
+
+      // Fx33: write the value of vX as BCD value at the addresses I, I+1 and
+      // I+2
+    case 0x33: {
+      unsigned short x = getIndexX(chip8->opcode);
+      unsigned char v = chip8->v[x];
+      chip8->memory[chip8->I] = v / 100;
+      chip8->memory[chip8->I + 1] = (v % 100) / 10;
+      chip8->memory[chip8->I + 2] = v % 10;
+      chip8->pc += 2;
+      break;
+    }
     case 0x55: {
       unsigned short x = getIndexX(chip8->opcode);
       unsigned char v;
