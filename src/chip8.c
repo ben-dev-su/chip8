@@ -387,6 +387,11 @@ void decode(chip8_t *chip8) {
       chip8->pc += 2;
       break;
     }
+    case 0x1E: {
+      chip8->I += chip8->v[getIndexX(chip8->opcode)];
+      chip8->pc += 2;
+      break;
+    }
     }
     break;
   default:
