@@ -1,35 +1,27 @@
 #include "chip8.h"
 #include "logging.h"
 #include "stack.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define DEBUG
+#define FONTSET_START_INDEX (0x50)
+#define PROGRAM_START_INDEX (0x200)
 
-void fetch(chip8_t *chip8);
-void decode(chip8_t *chip8);
-void execute();
-long get_file_size(FILE *fp);
-unsigned short getN(unsigned short opcode);
-unsigned short getNN(unsigned short opcode);
-unsigned short getNNN(unsigned short opcode);
-unsigned short getIndexX(unsigned short opcode);
-unsigned short getIndexY(unsigned short opcode);
-
-/*
- * FONT data that will be stored in memory at position 0x50 to 0x9F
- */
-static unsigned short PROGRAM_START_INDEX = 0x200;
-static unsigned char CHIP8_FONTSET_STARTINDEX = 0x50;
-
-/* commented out to silence the compiler. not sure if i even need it */
-/* static unsigned char FONT_END_INDEX = 0x9F; */
+typedef struct decoded_instruction {
+  uint16_t type;
+  uint16_t nnn;
+  uint8_t nn;
+  uint8_t n;
+  uint8_t reg_x;
+  uint8_t reg_y;
+} decoded_instruction_t;
 
 /*
  * FONT data that will be stored in memory at position 0x50 to 0x9F
  */
-static const unsigned char CHIP8_FONTSET[80] = {
+static const uint8_t CHIP8_FONTSET[] = {
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
     0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -48,6 +40,29 @@ static const unsigned char CHIP8_FONTSET[80] = {
     0xF0, 0x80, 0xF0, 0x80, 0x80  // F
 };
 
+static void fetch(chip8_t *chip8);
+static void decode(const chip8_t *chip8, decoded_instruction_t *instr);
+static bool execute(chip8_t *chip8, decoded_instruction_t *instr);
+
+/*
+ * @brief Returns the file size for a given file.
+ */
+static bool get_file_size(FILE *fp, long *file_size) {
+  if (fseek(fp, 0, SEEK_END) != 0) {
+    perror("fseek");
+    return false;
+  }
+  *file_size = ftell(fp);
+
+  if (*file_size == -1L) {
+    perror("ftell");
+    return false;
+  }
+
+  rewind(fp);
+  return true;
+}
+
 //  CHIP8 keypad   |   WASD
 //_________________|____________
 //    1	2	3	C      |  1	2	3	4
@@ -57,53 +72,67 @@ static const unsigned char CHIP8_FONTSET[80] = {
 
 void chip8_initialise(chip8_t *chip8) {
   memset(chip8, 0, sizeof(*chip8));
-  memcpy(&chip8->memory[CHIP8_FONTSET_STARTINDEX], CHIP8_FONTSET,
+  memcpy(&chip8->memory[FONTSET_START_INDEX], CHIP8_FONTSET,
          sizeof(CHIP8_FONTSET));
 
   chip8->pc = PROGRAM_START_INDEX;
 }
 
-void chip8_loadGame(chip8_t *chip8, char *fileName) {
-  printf("Filename: %s\n", fileName);
-  FILE *fp = fopen(fileName, "rb");
+bool chip8_load_game(chip8_t *chip8, const char *file_name) {
+  FILE *fp = fopen(file_name, "rb");
   if (fp == NULL) {
-    perror("fopen failed");
-    return;
+    perror("fopen");
+    return false;
   }
-  long file_size = get_file_size(fp);
-  fread(chip8->memory + PROGRAM_START_INDEX, sizeof(unsigned char), file_size,
-        fp);
-
+  long file_size;
+  if (!get_file_size(fp, &file_size)) {
+    fclose(fp);
+    return false;
+  }
+  if ((size_t)file_size > sizeof(chip8->memory) - PROGRAM_START_INDEX) {
+    fclose(fp);
+    fprintf(stderr, "Read file exceeds available memory: %ld\n", file_size);
+    return false;
+  }
+  size_t read = fread(chip8->memory + PROGRAM_START_INDEX, sizeof(uint8_t),
+                      file_size, fp);
+  if (read != (size_t)file_size) {
+    perror("fread");
+    fclose(fp);
+    return false;
+  }
   fclose(fp);
+  return true;
 }
 
-void chip8_emulateCycle(chip8_t *chip8) {
+bool chip8_emulate_cycle(chip8_t *chip8) {
+  if (chip8 == NULL) {
+    return false;
+  }
+
+  decoded_instruction_t instr = {0};
   fetch(chip8);
-  decode(chip8);
-  /* execute(); */
+  decode(chip8, &instr);
+  if (!execute(chip8, &instr)) {
+    return false;
+  }
+
+#ifdef DEBUG
+  log_chip8_state(chip8);
+#endif
+  return true;
 }
 
 /*
- * @Brief Does fetch opcodes from memory, and increments the program counter.
+ * @brief Does fetch opcodes from memory, and increments the program counter.
  *
  */
-void fetch(chip8_t *chip8) {
-  if (chip8 == NULL) {
-    printf("chip8 can't be NULL (forgot to initialise?): %p", chip8);
-    free(chip8);
-    exit(1);
-  }
-
-  unsigned short opcode;
-  unsigned char first_byte = chip8->memory[chip8->pc];
-  unsigned char second_byte = chip8->memory[chip8->pc + 1];
-  opcode = first_byte << 8 | second_byte;
-  chip8->opcode = opcode;
+static void fetch(chip8_t *chip8) {
+  uint8_t first_byte = chip8->memory[chip8->pc];
+  uint8_t second_byte = chip8->memory[chip8->pc + 1];
+  chip8->opcode = (first_byte << 8) | second_byte;
+  chip8->pc += 2;
 }
-
-/* implemented opcodes
-
- */
 
 /* TODO: opcodes to implement
 
@@ -119,333 +148,232 @@ Fx15: set delay timer to vX
 Fx18: set sound timer to vX, sound is played until timer reaches zero
 Fx29: set I to the 5 line high hex sprite for the lowest nibble in vX
  */
-void decode(chip8_t *chip8) {
-  unsigned short op = chip8->opcode & 0xF000;
-  // The 4 bit value
-  // FIXME: unused
-  unsigned short N;
-  (void)N;
-  // The 8 bit value
-  // FIXME: unused
-  unsigned short NN;
-  (void)NN;
-  // The 12 bit value
-  // FIXME: unused
-  unsigned short NNN;
-  (void)NNN;
-  // Index of a v register
-  unsigned short index_x;
-  // Index of a v register
-  // FIXME: unused
-  unsigned short index_y;
-  (void)index_y;
+static void decode(const chip8_t *chip8, decoded_instruction_t *instr) {
+  instr->type = chip8->opcode & 0xF000;
+  instr->n = chip8->opcode & 0x000F;
+  instr->nn = chip8->opcode & 0x00FF;
+  instr->nnn = chip8->opcode & 0x0FFF;
+  instr->reg_x = (chip8->opcode >> 8) & 0x000F;
+  instr->reg_y = (chip8->opcode >> 4) & 0x000F;
+}
 
-  switch (chip8->opcode & 0xF000) {
-  case 0x0000:
-    op = chip8->opcode & 0x00FF;
-    switch (op) {
+static bool execute(chip8_t *chip8, decoded_instruction_t *instr) {
+  switch (instr->type) {
+  case 0x0000: {
+    uint16_t subop = instr->nn;
+    switch (subop) {
 
       // 00E0: clear the screen
     case 0x00E0:
-      memset(chip8->gfx, 0, sizeof(chip8->gfx));
-      chip8->pc += 2;
+      memset(chip8->display, 0, sizeof(chip8->display));
       break;
 
       // 00EE: return from subroutine to address pulled from stack
-    case 0x00EE: {
-      unsigned short address;
-      pop(&chip8->stack, &address);
-      chip8->pc = address;
-      chip8->sp = chip8->stack.top;
-      chip8->pc += 2;
+    case 0x00EE:
+      if (!pop(&chip8->stack, &chip8->pc)) {
+        return false;
+      };
       break;
+
+    default:
+      fprintf(stderr, "Unknown opcode: %u\n", subop);
     }
-    }
-    break;
+  } break;
 
     // 1nnn: jump to address NNN
   case 0x1000:
-    chip8->pc = chip8->opcode & 0x0FFF;
+    chip8->pc = instr->nnn;
     break;
 
     // 2nnn: push return address onto stack and call subroutine at address NNN
-  case 0x2000: {
-    unsigned short NNN = getNNN(chip8->opcode);
-    push(&chip8->stack, chip8->pc);
-    chip8->sp = chip8->stack.top;
-    chip8->pc = NNN;
+  case 0x2000:
+    if (!push(&chip8->stack, chip8->pc)) {
+      return false;
+    }
+    chip8->pc = instr->nnn;
     break;
-  }
 
     // 3xnn: skip next opcode if vX == NN
   case 0x3000: {
-    unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
-    unsigned short NN = getNN(chip8->opcode);
-    if (vx == NN) {
+    uint8_t vx = chip8->v[instr->reg_x];
+    if (vx == instr->nn) {
       chip8->pc += 2;
     }
-    chip8->pc += 2;
     break;
   }
 
     // 4xnn: skip next opcode if vX != NN
   case 0x4000: {
-    unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
-    unsigned short NN = getNN(chip8->opcode);
-    if (vx != NN) {
+    uint8_t vx = chip8->v[instr->reg_x];
+    if (vx != instr->nn) {
       chip8->pc += 2;
     }
-    chip8->pc += 2;
     break;
   }
 
     // 5xy0: skip next opcode if vX == vY
   case 0x5000: {
-    unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
-    unsigned short vy = chip8->v[getIndexY(chip8->opcode)];
+    uint8_t vx = chip8->v[instr->reg_x];
+    uint8_t vy = chip8->v[instr->reg_y];
     if (vx == vy) {
       chip8->pc += 2;
     }
-    chip8->pc += 2;
     break;
   }
 
     // 6xnn: set vX to NN
   case 0x6000:
-    index_x = getIndexX(chip8->opcode);
-    NN = getNN(chip8->opcode);
-    chip8->v[index_x] = NN;
-    chip8->pc += 2;
+    chip8->v[instr->reg_x] = instr->nn;
     break;
 
     // 7xnn: add NN to vX
   case 0x7000:
-    index_x = getIndexX(chip8->opcode);
-    NN = getNN(chip8->opcode);
-    chip8->v[index_x] += NN;
-    chip8->pc += 2;
+    chip8->v[instr->reg_x] += instr->nn;
     break;
 
     // Annn: set I to NNN
   case 0xA000:
-    chip8->I = chip8->opcode & 0x0FFF;
-    chip8->pc += 2;
+    chip8->I = instr->nnn;
     break;
   case 0x8000: {
-    op = getN(chip8->opcode);
-    unsigned short index_x = getIndexX(chip8->opcode);
-    unsigned short index_y = getIndexY(chip8->opcode);
-    unsigned short vx = chip8->v[index_x];
-    unsigned short vy = chip8->v[index_y];
-    switch (op) {
+    uint16_t subop = instr->n;
+    uint8_t vx = chip8->v[instr->reg_x];
+    uint8_t vy = chip8->v[instr->reg_y];
+    switch (subop) {
 
       // 8xy0: set vX to the value of vY
     case 0x0:
-      chip8->v[index_x] = vy;
+      chip8->v[instr->reg_x] = vy;
       break;
 
       // 8xy1: set vX to the result of bitwise vX OR vY [Quirk 5]
     case 0x1:
-      chip8->v[index_x] = vx | vy;
+      chip8->v[instr->reg_x] = vx | vy;
       break;
 
       // 8xy2: set vX to the result of bitwise vX AND vY [Quirk 5]
     case 0x2:
-      chip8->v[index_x] = vx & vy;
+      chip8->v[instr->reg_x] = vx & vy;
       break;
 
       // 8xy3: set vX to the result of bitwise vX XOR vY [Quirk 5]
     case 0x3:
-      chip8->v[index_x] = vx ^ vy;
+      chip8->v[instr->reg_x] = vx ^ vy;
       break;
 
       // 8xy4: add vY to vX, vF is set to 1 if an overflow happened, to 0 if
       // not, even if X=F!
     case 0x4:
-      if (vx + vy > 255) {
-        chip8->v[0xf] = 1;
-      } else {
-
-        chip8->v[0xf] = 0;
-      }
-      chip8->v[index_x] += vy;
+      chip8->v[0xF] = vx + vy > 255;
+      chip8->v[instr->reg_x] += vy;
       break;
 
       // 8xy5: subtract vY from vX, vF is set to 0 if an underflow happened, to
       // 1 if not, even if X=F!
     case 0x5:
-      if (vx >= vy) {
-        chip8->v[0xF] = 1;
-      } else {
-        chip8->v[0xF] = 0;
-      }
-      chip8->v[index_x] -= vy;
+      chip8->v[0xF] = vx >= vy;
+      chip8->v[instr->reg_x] -= vy;
       break;
 
       // 8xy6: set vX to vY and shift vX one bit to the right, set vF to the bit
       // shifted out, even if X=F! [Quirk 6]
     case 0x6:
-      chip8->v[index_x] = vy;
-      if ((chip8->v[index_x] & 0b00000001) == 1) {
-        chip8->v[0xF] = 1;
-      } else {
-        chip8->v[0xF] = 0;
-      }
-      chip8->v[index_x] = chip8->v[index_x] >> 1;
+      chip8->v[instr->reg_x] = vy;
+      chip8->v[0xF] = chip8->v[instr->reg_x] & 0x01;
+      chip8->v[instr->reg_x] = chip8->v[instr->reg_x] >> 1;
       break;
 
       // 8xy7: set vX to the result of subtracting vX from vY, vF is set to 0 if
       // an underflow happened, to 1 if not, even if X=F!
     case 0x7:
-      if (vy >= vx) {
-        chip8->v[0xF] = 1;
-      } else {
-        chip8->v[0xF] = 0;
-      }
-      chip8->v[index_x] = vy - vx;
+      chip8->v[0xF] = vy >= vx;
+      chip8->v[instr->reg_x] = vy - vx;
       break;
 
       // 8xyE: set vX to vY and shift vX one bit to the left, set vF to the bit
       // shifted out, even if X=F! [Quirk 6]
     case 0xE:
-      chip8->v[index_x] = vy;
-      if ((chip8->v[index_x] & 0b10000000) == 0b10000000) {
-        chip8->v[0xF] = 1;
-      } else {
-        chip8->v[0xF] = 0;
-      }
-      chip8->v[index_x] = chip8->v[index_x] << 1;
+      chip8->v[instr->reg_x] = vy;
+      chip8->v[0xF] = (chip8->v[instr->reg_x] & 0x80) == 0x80;
+      chip8->v[instr->reg_x] = chip8->v[instr->reg_x] << 1;
       break;
+    default:
+      fprintf(stderr, "Unknown opcode: %u\n", subop);
     }
-    chip8->pc += 2;
     break;
   }
 
     // 9xy0: skip next opcode if vX != vY
   case 0x9000: {
-    unsigned short vx = chip8->v[getIndexX(chip8->opcode)];
-    unsigned short vy = chip8->v[getIndexY(chip8->opcode)];
+    uint8_t vx = chip8->v[instr->reg_x];
+    uint8_t vy = chip8->v[instr->reg_y];
     if (vx != vy) {
       chip8->pc += 2;
     }
-    chip8->pc += 2;
     break;
   }
 
     // Dxyn: draw 8xN pixel sprite at position vX, vY with data starting at the
     // address in I, I is not changed [Quirk 7] [Quirk 8] [Quirk 9] [Quirk 10]
   case 0xD000: {
-    unsigned char vx = getIndexX(chip8->opcode);
-    unsigned char vy = getIndexY(chip8->opcode);
-    unsigned char xpos = chip8->v[vx];
-    unsigned char ypos = chip8->v[vy];
-    unsigned char height = getN(chip8->opcode);
-    unsigned char sprite;
-    chip8->v[0xf] = 0;
+    uint8_t xpos = chip8->v[instr->reg_x];
+    uint8_t ypos = chip8->v[instr->reg_y];
+    uint8_t height = instr->n;
+    chip8->v[0xF] = 0;
     for (size_t row = 0; row < height; row++) {
-      sprite = chip8->memory[chip8->I + row];
+      uint8_t sprite = chip8->memory[chip8->I + row];
       for (size_t col = 0; col < 8; col++) {
-        if (sprite & (0b10000000 >> col)) {
+        if (sprite & (0x80 >> col)) {
           // start index: width * y + x
           // index pos: row * width + col
           // = width * y + x + row * width + col
-          if (chip8->gfx[(64 * (row + ypos)) + col + xpos] == 1) {
-            chip8->v[0xf] = 1;
-          } else {
-            chip8->v[0xf] = 0;
-          }
-          chip8->gfx[(64 * (row + ypos)) + col + xpos] ^= 1;
+          uint16_t pixel_idx =
+              (CHIP8_DISPLAY_WIDTH * (row + ypos)) + col + xpos;
+          chip8->v[0xF] |= chip8->display[pixel_idx] == 1;
+          chip8->display[pixel_idx] ^= 1;
         }
       }
     }
-    chip8->pc += 2;
     break;
   }
-  case 0xF000:
-    op = getNN(chip8->opcode);
-    switch (op) {
+  case 0xF000: {
+    uint16_t subop = instr->nn;
+    switch (subop) {
 
       // Fx33: write the value of vX as BCD value at the addresses I, I+1 and
       // I+2
     case 0x33: {
-      unsigned short x = getIndexX(chip8->opcode);
-      unsigned char v = chip8->v[x];
-      chip8->memory[chip8->I] = v / 100;
-      chip8->memory[chip8->I + 1] = (v % 100) / 10;
-      chip8->memory[chip8->I + 2] = v % 10;
-      chip8->pc += 2;
+      uint8_t vx = chip8->v[instr->reg_x];
+      chip8->memory[chip8->I] = vx / 100;
+      chip8->memory[chip8->I + 1] = (vx % 100) / 10;
+      chip8->memory[chip8->I + 2] = vx % 10;
       break;
     }
 
       // Fx55: write the content of v0 to vX at the memory pointed to by I, I is
       // incremented by X+1 [Quirk 12]
-    case 0x55: {
-      unsigned short x = getIndexX(chip8->opcode);
-      unsigned char v;
-      for (size_t i = 0; i <= x; i++) {
-        v = chip8->v[i];
-        chip8->memory[chip8->I + i] = v;
-      }
-      chip8->I += x + 1;
-      chip8->pc += 2;
+    case 0x55:
+      memcpy(&chip8->memory[chip8->I], chip8->v, instr->reg_x + 1);
+      chip8->I += instr->reg_x + 1;
       break;
-    }
 
       // Fx65: read the bytes from memory pointed to by I into the registers v0
       // to vX, I is incremented by X+1 [Quirk 12]
-    case 0x65: {
-      unsigned short x = getIndexX(chip8->opcode);
-      for (size_t i = 0; i <= x; i++) {
-        chip8->v[i] = chip8->memory[chip8->I + i];
-      }
-      chip8->I += x + 1;
-      chip8->pc += 2;
+    case 0x65:
+      memcpy(chip8->v, &chip8->memory[chip8->I], instr->reg_x + 1);
+      chip8->I += instr->reg_x + 1;
       break;
-    }
 
       // Fx1E: add vX to I
-    case 0x1E: {
-      chip8->I += chip8->v[getIndexX(chip8->opcode)];
-      chip8->pc += 2;
+    case 0x1E:
+      chip8->I += chip8->v[instr->reg_x];
       break;
+    default:
+      fprintf(stderr, "Unknown opcode: %u\n", subop);
     }
-    }
-    break;
+  } break;
   default:
-    printf("Unknown opcode: 0x%x\n", chip8->opcode);
+    fprintf(stderr, "Unknown opcode: %u\n", instr->type);
   }
-#ifdef DEBUG
-  log_chip8_state(chip8);
-#endif
+  return true;
 }
-
-void testSprite() {}
-/*
- * @Brief Returns the file size for a given file.
- */
-long get_file_size(FILE *fp) {
-
-  if (fp == NULL) {
-    printf("file pointer can't NULL: %p", fp);
-    exit(1);
-  }
-
-  long size;
-  fseek(fp, 0, SEEK_END);
-  size = ftell(fp);
-
-  if (size == -1) {
-    perror("something went wrong ");
-    exit(1);
-  }
-
-  rewind(fp);
-
-  return size;
-}
-
-unsigned short getN(unsigned short opcode) { return opcode & 0x000F; };
-unsigned short getNN(unsigned short opcode) { return opcode & 0x00FF; }
-unsigned short getNNN(unsigned short opcode) { return opcode & 0xFFF; }
-unsigned short getIndexX(unsigned short opcode) { return opcode >> 8 & 0x000F; }
-unsigned short getIndexY(unsigned short opcode) { return opcode >> 4 & 0x000F; }

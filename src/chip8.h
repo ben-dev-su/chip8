@@ -1,35 +1,42 @@
 #pragma once
 
 #include "stack.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+#define CHIP8_MEMORY_SIZE (4096)
+#define CHIP8_NUM_REGISTERS (16)
+#define CHIP8_DISPLAY_WIDTH (64)
+#define CHIP8_DISPLAY_HEIGHT (32)
+#define CHIP8_NUM_KEYS (16)
 
 /**
  *  @brief The Chip8 emulator struct holding all data
  *
  */
-typedef struct Chip8 {
-  stack_t stack;              ///< our stack
-  unsigned short opcode;      ///< current opcode
-  unsigned short I;           ///< index register
-  unsigned short pc;          ///< program counter
-  unsigned short sp;          ///< stack pointer
-  unsigned char delay_timer;  ///< delay timer
-  unsigned char sound_timer;  ///< sound timer
-  unsigned char memory[4096]; ///< memory
-  unsigned char v[16];        ///< CPU registers V0 to VF
-  unsigned char gfx[64 * 32]; ///< screen
-  unsigned char keys[16];     ///< keypad
+typedef struct chip8 {
+  stack_t stack;                     ///< our stack
+  uint16_t opcode;                   ///< current opcode
+  uint16_t I;                        ///< index register
+  uint16_t pc;                       ///< program counter
+  uint8_t delay_timer;               ///< delay timer
+  uint8_t sound_timer;               ///< sound timer
+  uint8_t memory[CHIP8_MEMORY_SIZE]; ///< memory
+  uint8_t v[CHIP8_NUM_REGISTERS];    ///< CPU registers V0 to VF
+  uint8_t display[CHIP8_DISPLAY_WIDTH * CHIP8_DISPLAY_HEIGHT]; ///< screen
+  uint8_t keys[CHIP8_NUM_KEYS];                                ///< keypad
 } chip8_t;
 
 /*
- * @Brief Initialise the Chip8.
+ * @brief Initialise the Chip8.
  */
 void chip8_initialise(chip8_t *chip8);
 /*
- * @Brief Emulates a cycle.
+ * @brief Emulates a cycle.
  */
-void chip8_emulateCycle(chip8_t *chip8);
+bool chip8_emulate_cycle(chip8_t *chip8);
 
 /*
- * @Brief Loads a Chip8 program into the Chip8's memory.
+ * @brief Loads a Chip8 program into the Chip8's memory.
  */
-void chip8_loadGame(chip8_t *chip8, char *fileName);
+bool chip8_load_game(chip8_t *chip8, const char *file_name);

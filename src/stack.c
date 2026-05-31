@@ -1,31 +1,34 @@
 #include "stack.h"
+#include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 
-int pop(stack_t *stack, unsigned short *result) {
+bool pop(stack_t *stack, uint16_t *result) {
   if (stack == NULL || result == NULL) {
     fprintf(stderr, "'stack' or 'result' can't be NULL\n");
-    exit(EXIT_FAILURE);
+    return false;
   }
 
-  if (stack->top == 0)
-    return 0;
+  if (stack->top == 0) {
+    fprintf(stderr, "Stack underflow\n");
+    return false;
+  }
 
   *result = stack->arr[--stack->top];
-  return 1;
+  return true;
 }
 
-int push(stack_t *stack, unsigned short value) {
+bool push(stack_t *stack, uint16_t value) {
   if (stack == NULL) {
     fprintf(stderr, "Stack can't be NULL\n");
-    exit(EXIT_FAILURE);
+    return false;
   }
 
-  if (stack->top > STACK_MAX_LEVEL) {
-    return 0;
+  if (stack->top >= STACK_MAX_LEVEL) {
+    fprintf(stderr, "Stack overflow\n");
+    return false;
   }
 
   stack->arr[stack->top++] = value;
 
-  return 1;
+  return true;
 }

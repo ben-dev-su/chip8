@@ -63,7 +63,7 @@ void render(chip8_t *chip8, sdl_t *sdl) {
   for (size_t y = 0; y < WINDOW_HEIGHT; y++) {
     for (size_t x = 0; x < WINDOW_WIDTH; x++) {
       int i = WINDOW_WIDTH * y + x;
-      if (chip8->gfx[i]) {
+      if (chip8->display[i]) {
         rect.x = x * WINDOW_SCALE;
         rect.y = y * WINDOW_SCALE;
         SDL_RenderFillRect(sdl->renderer, &rect);
